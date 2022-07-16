@@ -10,6 +10,12 @@ import pickle
 import json
 from threading import Thread
 import itertools
+import time
+
+# %%
+
+import pykakasi
+import translators as ts
 
 # %%
 
@@ -93,8 +99,6 @@ def main(texts=None):
 	loops = 0
 	trs_save_t = None
 	save_frequency = 1000
-	import time
-	import pykakasi
 
 	kks = pykakasi.kakasi()
 	try:
@@ -330,8 +334,6 @@ def main(texts=None):
 	return cache_translations
 
 # %%
-import translators as ts
-
 
 def translate_google(text, from_language="ja"):
 	t = ts.google(text, is_detail_result=True, from_language=from_language)
