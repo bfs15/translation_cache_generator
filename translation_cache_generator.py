@@ -21,23 +21,24 @@ import translators as ts
 
 logging.basicConfig(level=logging.WARN)
 
-kanji_add_romaji = True
 romanization = "hepburn"
+cache_dir = "cache/"
 max_backups = 1
 backup_dir = "bak/"
-cache_dir = "cache/"
+
+cache_translations_filename = "cache_translations.json"
 
 update_official_translations = False
-asynch_save = False # might be bugged, also no reason to turn on
+asynch_save = False  # might be bugged, also no reason to turn on
 
 # non-exclusive
 translators_to_use = {
-	"google" : True,
-	"deepl" : False,
-	"bing" : False,
-	"google_zh" : False,
-	"deepl_zh" : False,
-	"bing_zh" : False,
+	"google": True,
+	"deepl": False,
+	"bing": False,
+	"google_zh": False,
+	"deepl_zh": False,
+	"bing_zh": False,
 }
 
 # sleep in seconds to wait between requests if it fails
@@ -57,11 +58,20 @@ re_nonphonetic = re.compile(re_nonphonetic)
 
 # %%
 
-def main(texts=None):
+
+def main(
+	texts=None,
+	loops_max=1,
+	loops=0,
+	trs_save_t=None,
+	save_frequency=0,
+):
 	# %%
 	if not texts:
 		if len(sys.argv) != 2:
-			print("Usage: python translation_cache_generator.py [text_file_with_entries_on_each_line]")
+			print(
+				"Usage: python translation_cache_generator.py [text_file_with_entries_on_each_line]"
+			)
 			return
 
 		textsFilepath = sys.argv[1]
@@ -72,33 +82,25 @@ def main(texts=None):
 
 	cache_translations = {}
 
-	if kanji_add_romaji:
-		filepath = cache_dir + "cache_translations.json"
-		try:
-			with open(filepath, "rb") as f:
-				cache_translations = json.load(f)
-		except FileNotFoundError:
-			logging.warning(
-				f"Cache file {filepath} not found!!"
-			)
-
+	filepath = cache_dir + cache_translations_filename
+	try:
+		with open(filepath, "rb") as f:
+			cache_translations = json.load(f)
+	except FileNotFoundError:
+		logging.warning(f"Cache file {filepath} not found!!")
 
 	# %%
 
 	official_character_translations = {}
 	for tr_dict in itertools.chain(
 		Path(".").glob("translation_dict*.json"),
-		Path(".").glob("*/translation_dict*.json")
+		Path(".").glob("*/translation_dict*.json"),
 	):
 		with open(str(tr_dict), "r") as f:
 			official_character_translations.update(json.load(f))
 	logging.info(
 		f"official_character_translations # Found {len(official_character_translations.keys())} entries in the dictionaries]"
 	)
-	loops_max = 1
-	loops = 0
-	trs_save_t = None
-	save_frequency = 1000
 
 	kks = pykakasi.kakasi()
 	try:
@@ -182,7 +184,6 @@ def main(texts=None):
 					t_bing = None
 					t_bing_zh = None
 
-					
 					if translators_to_use["google"]:
 						t_google = Thread(target=_google)
 						t_google.start()
@@ -193,17 +194,19 @@ def main(texts=None):
 						t_bing = Thread(target=_bing)
 						t_bing.start()
 					if translators_to_use["google_zh"]:
-						t_google_zh = Thread(target=_google, kwargs={"from_language": "zh"})
+						t_google_zh = Thread(
+							target=_google, kwargs={"from_language": "zh"}
+						)
 						t_google_zh.start()
 					if translators_to_use["deepl_zh"]:
-						t_deepl_zh = Thread(target=_deepl, kwargs={'from_language':"zh"})
+						t_deepl_zh = Thread(
+							target=_deepl, kwargs={"from_language": "zh"}
+						)
 						t_deepl_zh.start()
 					if translators_to_use["bing_zh"]:
-						t_bing_zh = Thread(target=_bing, kwargs={'from_language':"zh"})
+						t_bing_zh = Thread(target=_bing, kwargs={"from_language": "zh"})
 						t_bing_zh.start()
 
-					
-					
 					if translators_to_use["google"] and t_google:
 						t_google.join()
 					if translators_to_use["deepl"] and t_deepl:
@@ -267,7 +270,6 @@ def main(texts=None):
 					else:
 						trs["official"] = None
 
-
 				logging.info(trs)
 				if trs_save_t:
 					trs_save_t.join()
@@ -279,13 +281,14 @@ def main(texts=None):
 				}
 
 				if save_frequency and loops % save_frequency == 0:
-					filepath = cache_dir + "cache_translations.json"
+					filepath = cache_dir + cache_translations_filename
 					if trs_save_t:
 						trs_save_t.join()
 						trs_save_t = None
-					trs_save_t = save_file_a(filepath, cache_translations, asynch=asynch_save)
+					trs_save_t = save_file_a(
+						filepath, cache_translations, asynch=asynch_save
+					)
 
-				did_trs = [r["orig"] != r[romanization] for r in trs["pykakasi"]]
 				logging.info(str("".join([r["orig"] for r in trs["pykakasi"]])))
 				logging.info(str("".join([r[romanization] for r in trs["pykakasi"]])))
 			loops += 1
@@ -297,19 +300,18 @@ def main(texts=None):
 				print("Ended loops")
 				break
 
-			filepath = cache_dir + "cache_translations.json"
+			filepath = cache_dir + cache_translations_filename
 			if trs_save_t:
 				trs_save_t.join()
 				trs_save_t = None
 			trs_save_t = save_file_a(filepath, cache_translations, asynch=asynch_save)
 	except Exception as e:
 		logging.exception("")
-	filepath = cache_dir + "cache_translations.json"
+	filepath = cache_dir + cache_translations_filename
 	if trs_save_t:
 		trs_save_t.join()
 		trs_save_t = None
 	trs_save_t = save_file_a(filepath, cache_translations, asynch=asynch_save)
-
 
 	# %%
 
@@ -333,7 +335,9 @@ def main(texts=None):
 
 	return cache_translations
 
+
 # %%
+
 
 def translate_google(text, from_language="ja"):
 	t = ts.google(text, is_detail_result=True, from_language=from_language)
@@ -425,5 +429,5 @@ def save_file_a(filepath, data, save_fun=None, asynch=False):
 
 # %%
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 	main()

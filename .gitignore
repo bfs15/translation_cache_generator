@@ -2,7 +2,4 @@ cache/
 bak/
 cache_translations.json
 translation_dict*.json
-models/
-motion/
-effect/
-effects/
+__pycache__/
