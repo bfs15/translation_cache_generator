@@ -21,30 +21,8 @@ import translators as ts
 
 logging.basicConfig(level=logging.WARN)
 
-romanization = "hepburn"
-cache_dir = "cache/"
 max_backups = 1
 backup_dir = "bak/"
-
-cache_translations_filename = "cache_translations.json"
-
-update_official_translations = False
-asynch_save = False  # might be bugged, also no reason to turn on
-
-# non-exclusive
-translators_to_use = {
-	"google": True,
-	"deepl": False,
-	"bing": False,
-	"google_zh": False,
-	"deepl_zh": False,
-	"bing_zh": False,
-}
-
-# sleep in seconds to wait between requests if it fails
-translators_to_wait = {
-	"google": 10,
-}
 
 # %%
 
@@ -63,9 +41,31 @@ def main(
 	texts=None,
 	loops_max=1,
 	loops=0,
-	trs_save_t=None,
+	# non-exclusive
+	translators_to_use={
+		"google": True,
+		"deepl": False,
+		"bing": False,
+		"google_zh": False,
+		"deepl_zh": False,
+		"bing_zh": False,
+	},
+	# sleep in seconds to wait between requests if it fails
+	translators_to_wait={
+		"google": 10,
+	},
+	update_official_translations=False,
+	romanization="hepburn",
+	romanization_space_always=True,
+	cache_dir="cache/",
+	cache_translations_filename="cache_translations.json",
 	save_frequency=0,
+	max_backups=1,
+	backup_dir="bak/",
+	asynch_save=False,  # might be bugged, also no reason to turn on
 ):
+	cache_translations_save_thread = None
+
 	# %%
 	if not texts:
 		if len(sys.argv) != 2:
@@ -131,7 +131,11 @@ def main(
 					prev_did_tr = ""
 					for r in trs["pykakasi"]:
 						did_tr = r["orig"] != r[romanization]
-						if (prev_did_tr and not did_tr) or (did_tr and not prev_did_tr):
+						if s and (
+							romanization_space_always
+							or (prev_did_tr and not did_tr)
+							or (did_tr and not prev_did_tr)
+						):
 							s.strip()
 							s += " "
 						s += r[romanization]
@@ -271,9 +275,9 @@ def main(
 						trs["official"] = None
 
 				logging.info(trs)
-				if trs_save_t:
-					trs_save_t.join()
-					trs_save_t = None
+				if cache_translations_save_thread:
+					cache_translations_save_thread.join()
+					cache_translations_save_thread = None
 				cache_translations[text] = {
 					"trs": trs,
 					"did_trs": did_trs,
@@ -282,11 +286,15 @@ def main(
 
 				if save_frequency and loops % save_frequency == 0:
 					filepath = cache_dir + cache_translations_filename
-					if trs_save_t:
-						trs_save_t.join()
-						trs_save_t = None
-					trs_save_t = save_file_a(
-						filepath, cache_translations, asynch=asynch_save
+					if cache_translations_save_thread:
+						cache_translations_save_thread.join()
+						cache_translations_save_thread = None
+					cache_translations_save_thread = save_file_a(
+						filepath,
+						cache_translations,
+						asynch=asynch_save,
+						max_backups=max_backups,
+						backup_dir=backup_dir,
 					)
 
 				logging.info(str("".join([r["orig"] for r in trs["pykakasi"]])))
@@ -301,17 +309,29 @@ def main(
 				break
 
 			filepath = cache_dir + cache_translations_filename
-			if trs_save_t:
-				trs_save_t.join()
-				trs_save_t = None
-			trs_save_t = save_file_a(filepath, cache_translations, asynch=asynch_save)
+			if cache_translations_save_thread:
+				cache_translations_save_thread.join()
+				cache_translations_save_thread = None
+			cache_translations_save_thread = save_file_a(
+				filepath,
+				cache_translations,
+				asynch=asynch_save,
+				max_backups=max_backups,
+				backup_dir=backup_dir,
+			)
 	except Exception as e:
 		logging.exception("")
 	filepath = cache_dir + cache_translations_filename
-	if trs_save_t:
-		trs_save_t.join()
-		trs_save_t = None
-	trs_save_t = save_file_a(filepath, cache_translations, asynch=asynch_save)
+	if cache_translations_save_thread:
+		cache_translations_save_thread.join()
+		cache_translations_save_thread = None
+	cache_translations_save_thread = save_file_a(
+		filepath,
+		cache_translations,
+		asynch=asynch_save,
+		max_backups=max_backups,
+		backup_dir=backup_dir,
+	)
 
 	# %%
 
@@ -328,7 +348,7 @@ def main(
 		[
 			i
 			for i in cache_translations.items()
-			if ("official" in i[1]["trs"]) and i[1]["trs"]["google"] != -1
+			if ("official" in i[1]["trs"]) and i[1]["trs"]["official"] != -1
 		]
 	)
 	print(f"{official_tr_count} elements with official tr")
@@ -412,12 +432,25 @@ def save_file(filepath, data, save_fun, backup_dir=backup_dir, max_backups=max_b
 		logging.exception(e)
 
 
-def save_file_a(filepath, data, save_fun=None, asynch=False):
+def save_file_a(
+	filepath,
+	data,
+	save_fun=None,
+	asynch=False,
+	backup_dir=backup_dir,
+	max_backups=max_backups,
+):
 	if save_fun == None:
 		save_fun = Path(filepath).suffix[1:]
 
 	def _():
-		save_file(filepath, data, save_fun=save_fun)
+		save_file(
+			filepath,
+			data,
+			save_fun=save_fun,
+			backup_dir=backup_dir,
+			max_backups=max_backups,
+		)
 
 	a = Thread(target=_)
 	a.start()
